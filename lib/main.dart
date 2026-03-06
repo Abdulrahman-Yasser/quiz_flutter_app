@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:audioplayers/audioplayers.dart';
-
+import 'package:flutter/services.dart';
 void main() {
   runApp(const MyApp());
 }
@@ -17,8 +16,7 @@ class _MyAppState extends State<MyApp> {
  
   String aglVersion = "Loading...";
   bool showImage = false;
-  final player = AudioPlayer();
-
+  Process? player;
   @override
   void initState() {
     super.initState();
@@ -43,7 +41,21 @@ class _MyAppState extends State<MyApp> {
   }
 
   void playSound() async {
-    await player.play(AssetSource('sound.mp3'));
+    player?.kill();
+
+    try {
+      final byteData = await rootBundle.load('assets/sound.mp3');
+      final tempDir = Directory.systemTemp;
+      final tempFile = File('${tempDir.path}/sound.mp3');
+      await tempFile.writeAsBytes(byteData.buffer.asUint8List());
+
+      player = await Process.start('gst-launch-1.0', [
+        'playbin',
+        'uri=file://${tempFile.path}',
+      ]);
+    } catch (e) {
+      print("Error playing sound via GStreamer: $e");
+    }
   }
 
   @override
