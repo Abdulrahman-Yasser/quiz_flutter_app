@@ -23,9 +23,11 @@ class _MyAppState extends State<MyApp> {
 
   // ── BLE state ─────────────────────────────────────────────────────────────
   final BleService _ble = BleService();
-  List<BlueZDevice> _devices = [];
-  BlueZDevice? _connectedDevice;
+  List<BlueZDevice> _scannedDevices = [];
+  List<BlueZDevice> _connectedDevices = [];
   bool _isScanning = false;
+  bool _isAdvertising = false;
+  String _bleStatus = 'Initializing…';
   String? _bleError;
   String? _connectingAddress;
 
@@ -33,21 +35,33 @@ class _MyAppState extends State<MyApp> {
   void initState() {
     super.initState();
     readVersion();
+    _initBle();
+  }
 
-    _ble.devicesStream.listen((list) {
-      if (mounted) setState(() => _devices = list);
-    });
+  Future<void> _initBle() async {
+    try {
+      await _ble.init();
 
-    _ble.connectedStream.listen((device) {
-      if (mounted) setState(() {
-        _connectedDevice = device;
-        _connectingAddress = null;
-      });
-    });
+      _ble.scannedDevicesStream
+          .listen((d) { if (mounted) setState(() => _scannedDevices = d); });
 
-    _ble.scanningStream.listen((v) {
-      if (mounted) setState(() => _isScanning = v);
-    });
+      _ble.connectedDevicesStream
+          .listen((d) { if (mounted) setState(() { _connectedDevices = d; _connectingAddress = null; }); });
+
+      _ble.scanningStream
+          .listen((v) { if (mounted) setState(() => _isScanning = v); });
+
+      _ble.advertisingStream
+          .listen((v) { if (mounted) setState(() => _isAdvertising = v); });
+
+      _ble.statusStream
+          .listen((s) { if (mounted) setState(() => _bleStatus = s); });
+
+      setState(() => _bleStatus =
+          'Adapter: ${_ble.adapterName} (${_ble.adapterAddress})');
+    } catch (e) {
+      setState(() => _bleError = e.toString());
+    }
   }
 
   // ── Existing methods ──────────────────────────────────────────────────────
@@ -82,33 +96,36 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
-  // ── BLE methods ───────────────────────────────────────────────────────────
+  // ── BLE actions ───────────────────────────────────────────────────────────
   Future<void> _toggleScan() async {
     setState(() => _bleError = null);
     try {
-      if (_isScanning) {
-        await _ble.stopScan();
-      } else {
-        await _ble.startScan();
-      }
+      _isScanning ? await _ble.stopScan() : await _ble.startScan();
     } catch (e) {
       setState(() => _bleError = e.toString());
     }
   }
 
-  Future<void> _handleDeviceTap(BlueZDevice device) async {
-    if (_connectedDevice?.address == device.address) {
-      await _ble.disconnectDevice();
-    } else {
-      setState(() => _connectingAddress = device.address);
-      try {
-        await _ble.connectToDevice(device);
-      } catch (e) {
-        setState(() {
-          _bleError = 'Connection failed: $e';
-          _connectingAddress = null;
-        });
-      }
+  Future<void> _toggleAdvertising() async {
+    setState(() => _bleError = null);
+    try {
+      _isAdvertising
+          ? await _ble.stopAdvertising()
+          : await _ble.startAdvertising();
+    } catch (e) {
+      setState(() => _bleError = e.toString());
+    }
+  }
+
+  Future<void> _handleScanDeviceTap(BlueZDevice device) async {
+    setState(() => _connectingAddress = device.address);
+    try {
+      await device.connect();
+    } catch (e) {
+      setState(() {
+        _bleError = 'Connection failed: $e';
+        _connectingAddress = null;
+      });
     }
   }
 
@@ -132,7 +149,7 @@ class _MyAppState extends State<MyApp> {
         appBar: AppBar(
           title: const Text("AGL Flutter Demo"),
           actions: [
-            if (_connectedDevice != null)
+            if (_connectedDevices.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(right: 10),
                 child: Center(
@@ -140,9 +157,7 @@ class _MyAppState extends State<MyApp> {
                     avatar: const Icon(Icons.bluetooth_connected,
                         size: 14, color: Colors.white),
                     label: Text(
-                      _connectedDevice!.name.isEmpty
-                          ? 'Connected'
-                          : _connectedDevice!.name,
+                      '${_connectedDevices.length} connected',
                       style: const TextStyle(color: Colors.white, fontSize: 11),
                     ),
                     backgroundColor: Colors.green.shade600,
@@ -158,12 +173,11 @@ class _MyAppState extends State<MyApp> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
 
-              // ── Existing section ────────────────────────────────────────
+              // ── Existing section ──────────────────────────────────────
               Text("AGL Version: $aglVersion"),
               const SizedBox(height: 10),
               const Text("Name: Abdulrahman Yasser - Quiz of AGL Flutter"),
               const SizedBox(height: 20),
-
               ElevatedButton(
                 onPressed: () => setState(() => showImage = true),
                 child: const Text("Show Image"),
@@ -179,44 +193,98 @@ class _MyAppState extends State<MyApp> {
               const Divider(),
               const SizedBox(height: 10),
 
-              // ── BLE section ─────────────────────────────────────────────
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  "Bluetooth Devices",
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // Scan button
-              SizedBox(
+              // ── BLE Status ────────────────────────────────────────────
+              Container(
                 width: double.infinity,
-                height: 48,
-                child: ElevatedButton.icon(
-                  onPressed: _toggleScan,
-                  icon: _isScanning
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                              color: Colors.white, strokeWidth: 2),
-                        )
-                      : const Icon(Icons.bluetooth_searching),
-                  label: Text(
-                      _isScanning ? 'Stop Scanning…' : 'Scan for Devices'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _isScanning
-                        ? Colors.red.shade600
-                        : Colors.blue.shade700,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                  ),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.grey.shade300),
                 ),
+                child: Row(children: [
+                  Icon(Icons.bluetooth, color: Colors.blue.shade700, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(_bleStatus,
+                        style: TextStyle(
+                            fontSize: 12, color: Colors.grey.shade700)),
+                  ),
+                ]),
               ),
 
-              // Error banner
+              const SizedBox(height: 16),
+
+              // ── Two BLE buttons side by side ──────────────────────────
+              Row(
+                children: [
+                  // Button 1: Scan
+                  Expanded(
+                    child: SizedBox(
+                      height: 56,
+                      child: ElevatedButton.icon(
+                        onPressed: _toggleScan,
+                        icon: _isScanning
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                    color: Colors.white, strokeWidth: 2),
+                              )
+                            : const Icon(Icons.bluetooth_searching),
+                        label: Text(
+                          _isScanning ? 'Stop\nScan' : 'Scan\nDevices',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _isScanning
+                              ? Colors.red.shade600
+                              : Colors.blue.shade700,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(width: 12),
+
+                  // Button 2: Advertise
+                  Expanded(
+                    child: SizedBox(
+                      height: 56,
+                      child: ElevatedButton.icon(
+                        onPressed: _toggleAdvertising,
+                        icon: _isAdvertising
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                    color: Colors.white, strokeWidth: 2),
+                              )
+                            : const Icon(Icons.broadcast_on_personal),
+                        label: Text(
+                          _isAdvertising ? 'Stop\nAdvertise' : 'Advertise\nDevice',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _isAdvertising
+                              ? Colors.red.shade600
+                              : Colors.purple.shade700,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              // ── Error banner ──────────────────────────────────────────
               if (_bleError != null) ...[
                 const SizedBox(height: 10),
                 Container(
@@ -238,117 +306,148 @@ class _MyAppState extends State<MyApp> {
                 ),
               ],
 
-              const SizedBox(height: 12),
+              const SizedBox(height: 20),
 
-              // Empty state
-              if (_devices.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  child: Text(
-                    _isScanning
-                        ? 'Searching for devices…'
-                        : 'No devices found. Press Scan to start.',
-                    style: TextStyle(color: Colors.grey.shade600),
-                  ),
+              // ── Scanned Devices ───────────────────────────────────────
+              if (_isScanning || _scannedDevices.isNotEmpty) ...[
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Nearby Devices',
+                      style: TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w600)),
                 ),
-
-              // Device cards
-              ..._devices.map((device) {
-                final name =
-                    device.name.isEmpty ? 'Unknown Device' : device.name;
-                final isConnected =
-                    _connectedDevice?.address == device.address;
-                final isConnecting =
-                    _connectingAddress == device.address;
-
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    side: isConnected
-                        ? BorderSide(color: Colors.green.shade400, width: 2)
-                        : BorderSide.none,
+                const SizedBox(height: 8),
+                if (_scannedDevices.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Text('Searching…',
+                        style: TextStyle(color: Colors.grey.shade600)),
                   ),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: isConnected
-                          ? Colors.green.shade100
-                          : Colors.blue.shade50,
-                      child: Icon(
-                        isConnected
-                            ? Icons.bluetooth_connected
-                            : Icons.bluetooth,
-                        color: isConnected
-                            ? Colors.green.shade700
-                            : Colors.blue.shade700,
+                ..._scannedDevices.map((device) {
+                  final name =
+                      device.name.isEmpty ? 'Unknown Device' : device.name;
+                  final isConnecting =
+                      _connectingAddress == device.address;
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: Colors.blue.shade50,
+                        child: Icon(Icons.bluetooth,
+                            color: Colors.blue.shade700),
                       ),
-                    ),
-                    title: Text(name,
-                        style: const TextStyle(fontWeight: FontWeight.w600)),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // MAC address
+                      title: Text(name,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 14)),
+                      subtitle: Row(children: [
+                        Icon(Icons.signal_cellular_alt,
+                            size: 13, color: _rssiColor(device.rssi)),
+                        const SizedBox(width: 3),
+                        Text('${device.rssi} dBm',
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: _rssiColor(device.rssi))),
+                        const SizedBox(width: 6),
                         Text(device.address,
                             style: TextStyle(
-                                fontSize: 11, color: Colors.grey.shade600)),
-                        const SizedBox(height: 3),
-                        Row(children: [
-                          // RSSI
-                          Icon(Icons.signal_cellular_alt,
-                              size: 13, color: _rssiColor(device.rssi)),
-                          const SizedBox(width: 3),
-                          Text('${device.rssi} dBm',
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  color: _rssiColor(device.rssi))),
-
-                          if (isConnected) ...[
-                            const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 5, vertical: 1),
-                              decoration: BoxDecoration(
-                                color: Colors.green.shade100,
-                                borderRadius: BorderRadius.circular(4),
+                                fontSize: 11, color: Colors.grey.shade500)),
+                      ]),
+                      trailing: isConnecting
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2))
+                          : ElevatedButton(
+                              onPressed: () => _handleScanDeviceTap(device),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue.shade700,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 6),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8)),
                               ),
-                              child: Text('CONNECTED',
-                                  style: TextStyle(
-                                      fontSize: 10,
-                                      color: Colors.green.shade800,
-                                      fontWeight: FontWeight.bold)),
+                              child: const Text('Connect',
+                                  style: TextStyle(fontSize: 12)),
                             ),
-                          ],
-                        ]),
-                      ],
                     ),
-                    trailing: isConnecting
-                        ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : ElevatedButton(
-                            onPressed: () => _handleDeviceTap(device),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: isConnected
-                                  ? Colors.red.shade50
-                                  : Colors.blue.shade700,
-                              foregroundColor:
-                                  isConnected ? Colors.red : Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 6),
-                              minimumSize: Size.zero,
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8)),
+                  );
+                }),
+                const SizedBox(height: 12),
+              ],
+
+              // ── Connected Devices (from advertising) ──────────────────
+              if (_connectedDevices.isNotEmpty) ...[
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Connected Devices',
+                      style: TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w600)),
+                ),
+                const SizedBox(height: 8),
+                ..._connectedDevices.map((device) {
+                  final name =
+                      device.name.isEmpty ? 'Unknown Device' : device.name;
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      side: BorderSide(color: Colors.green.shade400, width: 2),
+                    ),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: Colors.green.shade100,
+                        child: Icon(Icons.bluetooth_connected,
+                            color: Colors.green.shade700),
+                      ),
+                      title: Text(name,
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: Text(device.address,
+                          style: TextStyle(
+                              fontSize: 11, color: Colors.grey.shade600)),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade100,
+                              borderRadius: BorderRadius.circular(4),
                             ),
-                            child: Text(
-                                isConnected ? 'Disconnect' : 'Connect',
-                                style: const TextStyle(fontSize: 12)),
+                            child: Text('CONNECTED',
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.green.shade800,
+                                    fontWeight: FontWeight.bold)),
                           ),
+                          const SizedBox(width: 6),
+                          TextButton(
+                            onPressed: () => _ble.disconnectDevice(device),
+                            child: const Text('Disconnect',
+                                style: TextStyle(
+                                    color: Colors.red, fontSize: 12)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              ] else if (_isAdvertising) ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text(
+                    'Waiting for a device to connect…\nOpen Bluetooth on your phone and select "${_ble.adapterName}"',
+                    textAlign: TextAlign.center,
+                    style:
+                        TextStyle(color: Colors.grey.shade600, height: 1.6),
                   ),
-                );
-              }),
+                ),
+              ],
             ],
           ),
         ),
