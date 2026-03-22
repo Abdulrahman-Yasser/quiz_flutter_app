@@ -18,7 +18,9 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   // ── Existing state ────────────────────────────────────────────────────────
   String aglVersion = "Loading...";
+  String ubuntuVersion = "Unknown";
   bool showImage = false;
+  bool showUbuntuVersion = false;
   Process? player;
 
   // ── BLE state ─────────────────────────────────────────────────────────────
@@ -94,6 +96,24 @@ class _MyAppState extends State<MyApp> {
     } catch (e) {
       print("Error playing sound via GStreamer: $e");
     }
+  }
+
+  Future<void> fetchUbuntuVersion() async {
+    try {
+      final file = File('/etc/os-release');
+      final content = await file.readAsString();
+      for (var line in content.split('\n')) {
+        if (line.startsWith('PRETTY_NAME=')) {
+          ubuntuVersion = line.split('=')[1].replaceAll('"', '');
+          break;
+        }
+      }
+    } catch (e) {
+      ubuntuVersion = "Unknown";
+    }
+    setState(() {
+      showUbuntuVersion = true;
+    });
   }
 
   // ── BLE actions ───────────────────────────────────────────────────────────
@@ -186,7 +206,16 @@ class _MyAppState extends State<MyApp> {
                 onPressed: playSound,
                 child: const Text("Play Sound"),
               ),
+              ElevatedButton(
+                onPressed: fetchUbuntuVersion,
+                child: const Text("Show Ubuntu Version"),
+              ),
               const SizedBox(height: 10),
+              if (showUbuntuVersion)
+                Text(
+                  "Ubuntu Version: $ubuntuVersion",
+                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
+                ),
               if (showImage) Image.asset('assets/picture.png', width: 200),
 
               const SizedBox(height: 30),
