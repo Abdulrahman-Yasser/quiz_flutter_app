@@ -1,0 +1,15 @@
+Common targets are:
+- meta-agl layer:
+  * agl-image-boot                (just enough to boot)
+  * agl-image-minimal             (minimal filesystem with APIs)
+  * agl-image-minimal-crosssdk    (crosssdk for above)
+  * agl-image-weston              (minimal filesystem with weston)
+  * agl-image-compositor          (minimal filesystem with AGL compositor)
+
+- meta-agl-flutter:
+  * agl-image-flutter.bb          (example/test minimal Flutter image)
+  * agl-image-flutter-debug.bb    (above with debugging support)
+
+Build guide:
+https://docs.automotivelinux.org/en/trout/#01_Getting_Started/02_Building_AGL_Image/01_Build_Process_Overview/
+
