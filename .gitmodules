@@ -1,2 +1,4 @@
 [submodule "AGL_Files/meta-flutter-task-app/"]
 	url = https://github.com/Abdulrahman-Yasser/AGL-app-layer
+[submodule "AGL_Files/meta-flutter-task-app"]
+	url = https://github.com/Abdulrahman-Yasser/AGL-app-layer
