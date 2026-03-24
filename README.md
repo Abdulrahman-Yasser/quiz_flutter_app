@@ -10,8 +10,8 @@ This may be the worse application organizing you will see, but I was really in a
 IMPORTANT
 
 You'll find two videos, 
-one for trout (I spend much time on it, I though it was okay to do the quiz on that branch)
-And another for the master branch (It had some problems and I didn't have the time to fix it)
-
+- one for trout (I spend much time on it, I though it was okay to do the quiz on that branch)
+- And another for the master branch (It had some problems and I didn't have the time to fix it)
+<br>
 https://drive.google.com/drive/folders/1Cm8628xCZv5cAYA88TfrzJln10XibPdu?usp=sharing
 
