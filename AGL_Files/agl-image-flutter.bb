@@ -45,7 +45,13 @@ IMAGE_INSTALL += "\
     linux-firmware-ibt-license \    
     agl-version-app \
 " 
-
+IMAGE_INSTALL += " \
+    fontconfig \
+    fontconfig-utils \
+    ttf-dejavu-sans \
+    ttf-dejavu-serif \
+    ttf-dejavu-sans-mono \
+"
 #IMAGE_INSTALL += "\
 #    weston-ini-conf-landscape \
 #    \
